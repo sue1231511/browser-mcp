@@ -47,6 +47,7 @@ async def ensure_page() -> Page:
                 "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
+                "--disable-blink-features=AutomationControlled",
             ],
         )
  
@@ -57,6 +58,10 @@ async def ensure_page() -> Page:
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/124.0.0.0 Safari/537.36"
         ),
+    )
+ 
+    await _context.add_init_script(
+        "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
     )
  
     if COOKIE_PATH.exists():
@@ -198,4 +203,3 @@ async def load_cookies() -> str:
  
 if __name__ == "__main__":
     mcp.run(transport="streamable-http")
- 
