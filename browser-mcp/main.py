@@ -266,13 +266,17 @@ XHS_NOTE_JS = """
     const tags = Array.from(document.querySelectorAll('#detail-desc a.tag')).map(
         a => a.textContent?.trim()
     );
-    const comments = Array.from(document.querySelectorAll('.parent-comment')).slice(0, 10).map(c => {
-        const name = c.querySelector('.author-wrapper .name')?.textContent?.trim() || '';
-        const content = c.querySelector('.note-text')?.textContent?.trim()
-                     || c.querySelector('.content')?.textContent?.trim() || '';
-        const like = c.querySelector('.like .count')?.textContent?.trim() || '';
-        return { name, content, like };
-    });
+    const comments = Array.from(document.querySelectorAll('.parent-comment')).slice(0, __COMMENT_COUNT__).map(c => {
+        const item = c.querySelector('.comment-item');
+        if (!item) return null;
+        const name = item.querySelector('.author-wrapper .name')?.textContent?.trim() || '';
+        const tag = item.querySelector('.author-wrapper .tag')?.textContent?.trim() || '';
+        const text = item.querySelector('.note-text')?.textContent?.trim() || '';
+        const like = item.querySelector('.like')?.textContent?.trim() || '';
+        const date = item.querySelector('.info .date span')?.textContent?.trim() || '';
+        const location = item.querySelector('.info .location')?.textContent?.trim() || '';
+        return { name, tag, text, like, date, location };
+    }).filter(Boolean);
     return { title, desc, author, date, ip: ipLoc, likes, collects, comments_count: chatCount, tags, comments };
 })()
 """
@@ -318,10 +322,7 @@ async def read_xhs_note(url: str, comment_count: int = 10) -> str:
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
             await page.wait_for_timeout(1500)
  
-            js = XHS_NOTE_JS.replace(
-                ".slice(0, 10)",
-                f".slice(0, {int(comment_count)})",
-            )
+            js = XHS_NOTE_JS.replace("__COMMENT_COUNT__", str(int(comment_count)))
             result = await page.evaluate(js)
             return json.dumps(result, ensure_ascii=False, indent=2)
         except Exception as e:
