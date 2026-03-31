@@ -51,7 +51,6 @@ async def ensure_page() -> Page:
     """获取可用页面，自动处理崩溃恢复"""
     global _playwright, _context, _page
  
-    # 快速路径：页面还活着
     if _page is not None and not _page.is_closed():
         try:
             await _page.evaluate("1")
@@ -59,7 +58,6 @@ async def ensure_page() -> Page:
         except Exception:
             pass
  
-    # 检查 context 是否还活着
     if _context is not None:
         try:
             pages = _context.pages
@@ -73,7 +71,6 @@ async def ensure_page() -> Page:
         except Exception:
             pass
  
-    # 全部重建
     await _cleanup()
  
     _playwright = await async_playwright().start()
@@ -102,6 +99,8 @@ async def ensure_page() -> Page:
     _page = pages[0] if pages else await _context.new_page()
     return _page
  
+ 
+# ── 通用浏览器工具 ──────────────────────────────────────────
  
 @mcp.tool()
 async def navigate(url: str) -> str:
@@ -227,6 +226,106 @@ async def get_url() -> str:
             return page.url
         except Exception as e:
             return f"[错误] get_url 失败: {e}"
+ 
+ 
+# ── 小红书专用工具 ──────────────────────────────────────────
+ 
+XHS_FEED_JS = """
+(() => {
+    const items = document.querySelectorAll('.note-item');
+    return Array.from(items).map((item, i) => {
+        const links = item.querySelectorAll('a[href*="/explore/"]');
+        let url = '';
+        for (const a of links) {
+            if (a.href.includes('xsec_token')) { url = a.href; break; }
+        }
+        if (!url) {
+            for (const a of links) {
+                if (a.href.includes('/explore/')) { url = a.href; break; }
+            }
+        }
+        const title = item.querySelector('.title span')?.textContent?.trim() || '';
+        const desc = item.querySelector('.desc')?.textContent?.trim() || '';
+        const author = item.querySelector('.author-wrapper .name')?.textContent?.trim() || '';
+        const likes = item.querySelector('.like-wrapper .count')?.textContent?.trim() || '';
+        return { index: i, title: title || desc, author, likes, url };
+    });
+})()
+"""
+ 
+XHS_NOTE_JS = """
+(() => {
+    const title = document.querySelector('#detail-title')?.textContent?.trim() || '';
+    const desc = document.querySelector('#detail-desc')?.textContent?.trim() || '';
+    const author = document.querySelector('.author-container .username')?.textContent?.trim() || '';
+    const date = document.querySelector('.date')?.textContent?.trim() || '';
+    const ipLoc = document.querySelector('.ip-container')?.textContent?.trim() || '';
+    const likes = document.querySelector('.like-wrapper .count')?.textContent?.trim() || '';
+    const collects = document.querySelector('.collect-wrapper .count')?.textContent?.trim() || '';
+    const chatCount = document.querySelector('.chat-wrapper .count')?.textContent?.trim() || '';
+    const tags = Array.from(document.querySelectorAll('#detail-desc a.tag')).map(
+        a => a.textContent?.trim()
+    );
+    const comments = Array.from(document.querySelectorAll('.parent-comment')).slice(0, 10).map(c => {
+        const name = c.querySelector('.author-wrapper .name')?.textContent?.trim() || '';
+        const content = c.querySelector('.note-text')?.textContent?.trim()
+                     || c.querySelector('.content')?.textContent?.trim() || '';
+        const like = c.querySelector('.like .count')?.textContent?.trim() || '';
+        return { name, content, like };
+    });
+    return { title, desc, author, date, ip: ipLoc, likes, collects, comments_count: chatCount, tags, comments };
+})()
+"""
+ 
+ 
+@mcp.tool()
+async def read_xhs_feed(count: int = 10) -> str:
+    """
+    读取小红书 Explore 首页的笔记列表。
+    如果当前不在小红书页面会自动导航过去。
+    返回每篇笔记的标题、作者、点赞数和带 xsec_token 的链接。
+    count: 返回条数，默认 10。
+    """
+    async with get_lock():
+        try:
+            page = await ensure_page()
+            current = page.url
+            if "xiaohongshu.com" not in current:
+                await page.goto(
+                    "https://www.xiaohongshu.com/explore",
+                    wait_until="domcontentloaded", timeout=30000,
+                )
+                await page.wait_for_timeout(1500)
+ 
+            result = await page.evaluate(XHS_FEED_JS)
+            if result:
+                result = result[:count]
+            return json.dumps(result, ensure_ascii=False, indent=2)
+        except Exception as e:
+            return f"[错误] read_xhs_feed 失败: {e}"
+ 
+ 
+@mcp.tool()
+async def read_xhs_note(url: str, comment_count: int = 10) -> str:
+    """
+    读取一篇小红书笔记的完整内容（标题、正文、作者、标签、评论等）。
+    url: 笔记的完整链接（建议用 read_xhs_feed 返回的带 xsec_token 的链接）。
+    comment_count: 读取评论条数，默认 10。
+    """
+    async with get_lock():
+        try:
+            page = await ensure_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_timeout(1500)
+ 
+            js = XHS_NOTE_JS.replace(
+                ".slice(0, 10)",
+                f".slice(0, {int(comment_count)})",
+            )
+            result = await page.evaluate(js)
+            return json.dumps(result, ensure_ascii=False, indent=2)
+        except Exception as e:
+            return f"[错误] read_xhs_note 失败: {e}"
  
  
 if __name__ == "__main__":
