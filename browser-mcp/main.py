@@ -329,5 +329,54 @@ async def read_xhs_note(url: str, comment_count: int = 10) -> str:
             return f"[错误] read_xhs_note 失败: {e}"
  
  
+@mcp.tool()
+async def like_xhs_note() -> str:
+    """
+    给当前打开的小红书笔记点赞或取消点赞。
+    需要先用 read_xhs_note 打开一篇笔记。
+    """
+    async with get_lock():
+        try:
+            page = await ensure_page()
+            await page.click(
+                ".interact-container .like-wrapper", timeout=5000
+            )
+            await page.wait_for_timeout(500)
+            is_liked = await page.evaluate(
+                "document.querySelector('.interact-container .like-wrapper')"
+                ".classList.contains('like-active')"
+            )
+            return f"{'已点赞 ❤️' if is_liked else '已取消点赞'}"
+        except Exception as e:
+            return f"[错误] like_xhs_note 失败: {e}"
+ 
+ 
+@mcp.tool()
+async def comment_xhs_note(text: str) -> str:
+    """
+    在当前打开的小红书笔记下发评论。
+    需要先用 read_xhs_note 打开一篇笔记。
+    text: 评论内容。
+    """
+    async with get_lock():
+        try:
+            page = await ensure_page()
+            # 点击评论框激活
+            await page.click("#content-textarea", timeout=5000)
+            await page.wait_for_timeout(300)
+            # 逐字输入模拟真人
+            await page.keyboard.type(text, delay=40)
+            await page.wait_for_timeout(300)
+            # 等发送按钮变可用再点
+            await page.wait_for_function(
+                "!document.querySelector('.btn.submit').classList.contains('gray')",
+                timeout=3000,
+            )
+            await page.click(".btn.submit", timeout=5000)
+            await page.wait_for_timeout(1000)
+            return f"已发送评论: {text}"
+        except Exception as e:
+            return f"[错误] comment_xhs_note 失败: {e}"
+ 
+ 
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http")
