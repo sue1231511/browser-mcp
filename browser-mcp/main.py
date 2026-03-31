@@ -7,8 +7,17 @@ import random
 from pathlib import Path
 from typing import Optional
 from playwright.async_api import async_playwright, BrowserContext, Page
-from mcp.server.fastmcp import FastMCP, Image
 from PIL import Image as PILImage
+ 
+# ── 兼容两种 FastMCP ──────────────────────────────────────
+# 优先用独立 fastmcp 包（功能更全，支持 path / middleware）
+# 如果没装就 fallback 到 MCP SDK 内置的版本
+try:
+    from fastmcp import FastMCP, Image
+    USING_STANDALONE_FASTMCP = True
+except ImportError:
+    from mcp.server.fastmcp import FastMCP, Image
+    USING_STANDALONE_FASTMCP = False
  
 PORT = int(os.environ.get("PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
@@ -19,12 +28,13 @@ PROFILE_DIR.mkdir(parents=True, exist_ok=True)
  
 mcp = FastMCP("browser", host="0.0.0.0", port=PORT)
  
-# ── 速率限制中间件 ─────────────────────────────────────────
-# 如果你的 FastMCP 版本支持内置中间件可以用这个：
-# from fastmcp.server.middleware.rate_limiting import RateLimitingMiddleware
-# mcp.add_middleware(RateLimitingMiddleware(max_requests_per_second=2))
-#
-# 如果版本不支持，下面的评论冷却机制已经覆盖了最危险的操作
+# ── 如果独立 fastmcp 包可用，加载速率限制中间件 ──────────
+if USING_STANDALONE_FASTMCP:
+    try:
+        from fastmcp.server.middleware.rate_limiting import RateLimitingMiddleware
+        mcp.add_middleware(RateLimitingMiddleware(max_requests_per_second=2))
+    except ImportError:
+        pass
  
 # ── 全局状态 ───────────────────────────────────────────────
  
@@ -35,8 +45,7 @@ _lock: Optional[asyncio.Lock] = None
  
 # 评论冷却控制
 _last_comment_ts: float = 0
-COMMENT_COOLDOWN_MIN = 60   # 最短冷却秒数
-COMMENT_COOLDOWN_MAX = 180  # 最长冷却秒数
+_next_cooldown: int = 0  # 上次评论时就确定好的下次冷却秒数
  
  
 def get_lock() -> asyncio.Lock:
@@ -162,16 +171,24 @@ async def ensure_page() -> Page:
  
 # ── 辅助函数 ───────────────────────────────────────────────
  
+COMMENT_COOLDOWN_MIN = 60   # 最短冷却秒数
+COMMENT_COOLDOWN_MAX = 180  # 最长冷却秒数
+ 
+ 
 def _is_xhs_note_page(url: str) -> bool:
     """检查当前是否在小红书笔记详情页"""
     return "xiaohongshu.com" in url and ("/explore/" in url or "/discovery/item/" in url)
  
  
-async def _simulate_reading(page: Page):
+async def _simulate_reading(page: Page, skip: bool = False):
     """
     模拟真人阅读行为：随机滚动 + 停留。
     在点赞/评论前调用，让行为轨迹更自然。
+    skip: 如果刚 read_xhs_note 过（已经"阅读"了），可以跳过。
     """
+    if skip:
+        return
+ 
     # 随机滚动 2-4 次
     scroll_times = random.randint(2, 4)
     for _ in range(scroll_times):
@@ -438,11 +455,11 @@ async def read_xhs_note(url: str, comment_count: int = 10) -> str:
  
  
 @mcp.tool()
-async def like_xhs_note() -> str:
+async def like_xhs_note(skip_simulate: bool = False) -> str:
     """
     给当前打开的小红书笔记点赞或取消点赞。
     需要先用 read_xhs_note 打开一篇笔记。
-    会先模拟阅读行为再点赞，降低风控风险。
+    skip_simulate: 如果刚 read_xhs_note 读完马上点赞，设为 True 跳过阅读模拟。
     """
     async with get_lock():
         try:
@@ -453,8 +470,8 @@ async def like_xhs_note() -> str:
             if not _is_xhs_note_page(current_url):
                 return f"[错误] 当前不在笔记详情页，无法点赞。当前 URL: {current_url}"
  
-            # 模拟阅读后再点赞
-            await _simulate_reading(page)
+            # 模拟阅读（可跳过）
+            await _simulate_reading(page, skip=skip_simulate)
  
             await page.click(
                 ".interact-container .like-wrapper", timeout=5000
@@ -470,14 +487,15 @@ async def like_xhs_note() -> str:
  
  
 @mcp.tool()
-async def comment_xhs_note(text: str) -> str:
+async def comment_xhs_note(text: str, skip_simulate: bool = False) -> str:
     """
     在当前打开的小红书笔记下发评论。
     需要先用 read_xhs_note 打开一篇笔记。
-    内置冷却时间（60-180秒随机）、阅读模拟、拟人化输入。
+    内置冷却时间、阅读模拟、拟人化输入。
     text: 评论内容。
+    skip_simulate: 如果刚 read_xhs_note 读完马上评论，设为 True 跳过阅读模拟。
     """
-    global _last_comment_ts
+    global _last_comment_ts, _next_cooldown
  
     async with get_lock():
         try:
@@ -488,29 +506,19 @@ async def comment_xhs_note(text: str) -> str:
             if not _is_xhs_note_page(current_url):
                 return f"[错误] 当前不在笔记详情页，无法评论。当前 URL: {current_url}"
  
-            # ── 冷却时间检查 ──
+            # ── 冷却时间检查（用上次评论时确定好的固定值） ──
             now = time.time()
-            if _last_comment_ts > 0:
-                cooldown = random.randint(COMMENT_COOLDOWN_MIN, COMMENT_COOLDOWN_MAX)
+            if _last_comment_ts > 0 and _next_cooldown > 0:
                 elapsed = now - _last_comment_ts
-                if elapsed < cooldown:
-                    remaining = int(cooldown - elapsed)
+                if elapsed < _next_cooldown:
+                    remaining = int(_next_cooldown - elapsed)
                     return f"[冷却中] 距离上次评论太近，还需等待约 {remaining} 秒。"
  
-            # ── 模拟阅读行为 ──
-            await _simulate_reading(page)
+            # ── 模拟阅读行为（可跳过） ──
+            await _simulate_reading(page, skip=skip_simulate)
  
-            # ── 点击评论框激活 ──
-            await page.click("#content-textarea", timeout=5000)
-            await page.wait_for_timeout(random.randint(300, 600))
- 
-            # ── 拟人化输入 ──
-            for char in text:
-                await page.keyboard.type(char)
-                delay = random.randint(30, 120)
-                if random.random() < 0.15:
-                    delay += random.randint(300, 800)
-                await page.wait_for_timeout(delay)
+            # ── 拟人化输入（调用 _human_type） ──
+            await _human_type(page, "#content-textarea", text)
  
             await page.wait_for_timeout(random.randint(300, 600))
  
@@ -527,7 +535,6 @@ async def comment_xhs_note(text: str) -> str:
             await page.wait_for_timeout(random.randint(1000, 2000))
  
             # ── 验证评论是否发送成功 ──
-            # 检查评论列表里有没有刚发的内容
             verify_js = f"""
             (() => {{
                 const comments = document.querySelectorAll('.comment-item .note-text');
@@ -539,11 +546,12 @@ async def comment_xhs_note(text: str) -> str:
             """
             success = await page.evaluate(verify_js)
  
-            # 不管验证结果如何，都更新冷却时间戳（防止重试轰炸）
+            # 更新冷却时间戳，并立刻确定下次冷却时长（不再每次检查时随机）
             _last_comment_ts = time.time()
+            _next_cooldown = random.randint(COMMENT_COOLDOWN_MIN, COMMENT_COOLDOWN_MAX)
  
             if success:
-                return f"已发送评论: {text}"
+                return f"已发送评论: {text}（下次评论冷却 {_next_cooldown} 秒）"
             else:
                 return f"[警告] 评论已提交但未在页面上确认到，可能被风控拦截或页面未刷新。评论内容: {text}"
  
@@ -590,9 +598,21 @@ async def check_xhs_login() -> str:
 # ── 启动 ───────────────────────────────────────────────────
  
 if __name__ == "__main__":
+    run_kwargs = {"transport": "streamable-http"}
+ 
     if SECRET_PATH:
-        mcp.run(transport="streamable-http", path=f"/{SECRET_PATH}/mcp")
+        if USING_STANDALONE_FASTMCP:
+            # 独立 fastmcp 包支持 path 参数
+            run_kwargs["path"] = f"/{SECRET_PATH}/mcp"
+        else:
+            # MCP SDK 内置版不支持 path，打印警告并使用默认路径
+            # 如需路径密钥，请安装独立 fastmcp 包: pip install fastmcp
+            print(
+                f"⚠️ 当前使用 MCP SDK 内置 FastMCP，不支持自定义 path。\n"
+                f"   密钥路径 /{SECRET_PATH}/mcp 未生效！\n"
+                f"   请安装独立包: pip install fastmcp"
+            )
     else:
-        # 没设密钥就用默认路径（开发环境）
         print("⚠️ 未设置 MCP_SECRET 环境变量，MCP 端点未加密！")
-        mcp.run(transport="streamable-http")
+ 
+    mcp.run(**run_kwargs)
