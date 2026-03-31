@@ -57,23 +57,21 @@ async def ensure_page() -> Page:
             await _page.evaluate("1")
             return _page
         except Exception:
-            pass  # 页面不可用，走恢复流程
+            pass
  
     # 检查 context 是否还活着
     if _context is not None:
         try:
-            # 尝试拿已有页面
             pages = _context.pages
             for p in pages:
                 if not p.is_closed():
                     _page = p
                     await _page.evaluate("1")
                     return _page
-            # 没有可用页面，新建一个
             _page = await _context.new_page()
             return _page
         except Exception:
-            pass  # context 也挂了，全部重建
+            pass
  
     # 全部重建
     await _cleanup()
@@ -119,7 +117,7 @@ async def navigate(url: str) -> str:
  
  
 @mcp.tool()
-async def screenshot(quality: int = 60) -> str | Image:
+async def screenshot(quality: int = 60):
     """
     截图当前可见区域，返回压缩后的 JPEG 图片。
     quality: 1-100，默认 60，扫码时建议用 90。
