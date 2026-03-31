@@ -2,10 +2,12 @@ import asyncio
 import json
 import base64
 import os
+import io
 from pathlib import Path
 from typing import Optional
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Image
+from PIL import Image as PILImage
  
 PORT = int(os.environ.get("PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
@@ -80,25 +82,21 @@ async def navigate(url: str) -> str:
  
  
 @mcp.tool()
-async def screenshot(quality: int = 60) -> str:
+async def screenshot(quality: int = 60) -> Image:
     """
-    截图当前可见区域，返回压缩后的 JPEG base64。
-    quality: 1-100，默认 60，二维码建议用 90。
+    截图当前可见区域，返回压缩后的 JPEG 图片。
+    quality: 1-100，默认 60，扫码时建议用 90。
     """
     async with get_lock():
         page = await ensure_page()
-        from PIL import Image
-        import io
         png_data = await page.screenshot(type="png", full_page=False)
-        img = Image.open(io.BytesIO(png_data))
-        # 缩放到最大宽度 1000px
+        img = PILImage.open(io.BytesIO(png_data))
         if img.width > 1000:
             ratio = 1000 / img.width
-            img = img.resize((1000, int(img.height * ratio)), Image.LANCZOS)
+            img = img.resize((1000, int(img.height * ratio)), PILImage.LANCZOS)
         buf = io.BytesIO()
         img.convert("RGB").save(buf, format="JPEG", quality=quality, optimize=True)
-        b64 = base64.b64encode(buf.getvalue()).decode()
-        return f"data:image/jpeg;base64,{b64}"
+        return Image(data=buf.getvalue(), format="jpeg")
  
  
 @mcp.tool()
@@ -200,3 +198,4 @@ async def load_cookies() -> str:
  
 if __name__ == "__main__":
     mcp.run(transport="streamable-http")
+ 
