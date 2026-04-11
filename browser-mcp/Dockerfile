@@ -1,5 +1,5 @@
 FROM python:3.11-slim
-# 系统依赖（playwright chromium 需要）
+ 
 RUN apt-get update && apt-get install -y \
     wget \
     ca-certificates \
@@ -38,12 +38,22 @@ RUN apt-get update && apt-get install -y \
     lsb-release \
     xdg-utils \
     xvfb \
+    x11vnc \
+    novnc \
+    websockify \
+    nginx \
     && rm -rf /var/lib/apt/lists/*
+ 
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN playwright install chromium
+ 
 COPY main.py .
+COPY nginx.conf /etc/nginx/sites-enabled/default
+COPY start.sh .
+RUN chmod +x start.sh
+ 
 VOLUME ["/data"]
 EXPOSE 8080
-CMD ["sh", "-c", "Xvfb :99 -screen 0 1280x900x24 & export DISPLAY=:99 && python main.py"]
+CMD ["./start.sh"]
