@@ -76,7 +76,7 @@ async def ensure_page() -> Page:
     _playwright = await async_playwright().start()
     _context = await _playwright.chromium.launch_persistent_context(
         user_data_dir=str(PROFILE_DIR),
-        headless=True,
+        headless=False,
         args=[
             "--no-sandbox",
             "--disable-setuid-sandbox",
