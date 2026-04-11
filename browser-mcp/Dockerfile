@@ -46,4 +46,4 @@ RUN playwright install chromium
 COPY main.py .
 VOLUME ["/data"]
 EXPOSE 8080
-CMD ["xvfb-run", "--auto-servernum", "--server-args=-screen 0 1280x900x24", "python", "main.py"]
+CMD ["sh", "-c", "Xvfb :99 -screen 0 1280x900x24 & export DISPLAY=:99 && python main.py"]
