@@ -1,5 +1,9 @@
 #!/bin/sh
  
+# 把临时目录重定向到可写路径
+mkdir -p /data/tmp
+export TMPDIR=/data/tmp
+ 
 # 启动虚拟显示器
 Xvfb :99 -screen 0 1280x900x24 &
 export DISPLAY=:99
