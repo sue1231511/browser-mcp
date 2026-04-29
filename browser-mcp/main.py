@@ -83,6 +83,9 @@ async def ensure_page() -> Page:
             "--disable-dev-shm-usage",
             "--disable-gpu",
             "--disable-blink-features=AutomationControlled",
+            "--disable-crash-reporter",          # 新增：禁用 crash reporter，避免依赖 /tmp
+            "--no-first-run",                    # 新增：跳过首次运行向导
+            "--disable-default-apps",            # 新增：禁用默认应用
         ],
         viewport={"width": 1280, "height": 900},
         user_agent=(
@@ -299,7 +302,6 @@ async def read_xhs_feed(count: int = 10) -> str:
                     "https://www.xiaohongshu.com/explore",
                     wait_until="domcontentloaded", timeout=30000,
                 )
-            # 等 feed 渲染出来再提取
             try:
                 await page.wait_for_selector(".note-item", timeout=5000)
             except Exception:
@@ -324,7 +326,6 @@ async def read_xhs_note(url: str, comment_count: int = 10) -> str:
         try:
             page = await ensure_page()
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            # 等正文渲染出来再提取
             try:
                 await page.wait_for_selector("#detail-desc", timeout=5000)
             except Exception:
@@ -369,13 +370,10 @@ async def comment_xhs_note(text: str) -> str:
     async with get_lock():
         try:
             page = await ensure_page()
-            # 点击评论框激活
             await page.click("#content-textarea", timeout=5000)
             await page.wait_for_timeout(300)
-            # 逐字输入模拟真人
             await page.keyboard.type(text, delay=40)
             await page.wait_for_timeout(300)
-            # 等发送按钮变可用再点
             await page.wait_for_function(
                 "!document.querySelector('.btn.submit').classList.contains('gray')",
                 timeout=3000,
