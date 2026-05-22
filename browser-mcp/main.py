@@ -121,8 +121,7 @@ async def navigate(url: str) -> str:
 @mcp.tool()
 async def screenshot(quality: int = 60):
     """
-    截图当前可见区域，返回压缩后的 JPEG 图片。
-    quality: 1-100，默认 60，扫码时建议用 90。
+    截个屏看看当前页面上有什么。quality: 1-100，默认60，扫码建议90。
     """
     async with get_lock():
         try:
