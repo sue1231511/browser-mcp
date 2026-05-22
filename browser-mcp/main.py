@@ -284,10 +284,8 @@ XHS_NOTE_JS = """
 @mcp.tool()
 async def read_xhs_feed(count: int = 10) -> str:
     """
-    读取小红书 Explore 首页的笔记列表。
-    如果当前不在小红书页面会自动导航过去。
-    返回每篇笔记的标题、作者、点赞数和带 xsec_token 的链接。
-    count: 返回条数，默认 10。
+    刷小红书首页，看看有什么笔记。返回标题、作者、点赞数和链接。
+    不在小红书页面的话会自动跳过去。count: 看几条，默认10。
     """
     async with get_lock():
         try:
