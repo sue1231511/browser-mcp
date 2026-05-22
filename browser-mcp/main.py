@@ -356,9 +356,8 @@ async def like_xhs_note() -> str:
 @mcp.tool()
 async def comment_xhs_note(text: str) -> str:
     """
-    在当前打开的小红书笔记下发评论。
-    需要先用 read_xhs_note 打开一篇笔记。
-    text: 评论内容。
+    在当前打开的小红书笔记下面发评论。
+    要先用 read_xhs_note 打开一篇笔记。text: 评论内容。
     """
     async with get_lock():
         try:
