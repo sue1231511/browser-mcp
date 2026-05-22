@@ -156,7 +156,7 @@ async def execute_js(script: str) -> str:
  
 @mcp.tool()
 async def click(selector: str) -> str:
-    """点击页面元素，支持 CSS selector"""
+    """点一下页面上的某个元素，用CSS选择器定位"""
     async with get_lock():
         try:
             page = await ensure_page()
