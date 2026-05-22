@@ -206,7 +206,7 @@ async def scroll(direction: str = "down", amount: int = 600) -> str:
  
 @mcp.tool()
 async def wait_for(selector: str, timeout: int = 10000) -> str:
-    """等待某个元素出现在页面中"""
+    """等页面上的某个元素加载出来再继续"""
     async with get_lock():
         try:
             page = await ensure_page()
