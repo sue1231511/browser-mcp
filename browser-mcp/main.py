@@ -141,8 +141,7 @@ async def screenshot(quality: int = 60):
 @mcp.tool()
 async def execute_js(script: str) -> str:
     """
-    在当前页面执行 JavaScript，返回 JSON 结果。
-    用于直接读取文字、评论、作者名等结构化数据，比截图快且省 token。
+    在当前页面跑一段JS，直接读取文字、评论什么的，比截图快。
     """
     async with get_lock():
         try:
