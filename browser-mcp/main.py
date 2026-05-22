@@ -218,7 +218,7 @@ async def wait_for(selector: str, timeout: int = 10000) -> str:
  
 @mcp.tool()
 async def get_url() -> str:
-    """获取当前页面 URL"""
+    """看看现在在哪个网页"""
     async with get_lock():
         try:
             page = await ensure_page()
