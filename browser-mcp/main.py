@@ -170,8 +170,8 @@ async def click(selector: str) -> str:
 @mcp.tool()
 async def type_text(selector: str, text: str, human_like: bool = False) -> str:
     """
-    聚焦输入框并输入文字（会先清空原有内容）。
-    human_like: True 时逐字输入模拟真人节奏（过反自动化），False 时直接 fill（更稳定）。
+    在输入框里打字，会先清空原来的内容。
+    human_like: True 的话会像真人一样一个字一个字打，False 就是直接填进去。
     """
     async with get_lock():
         try:
