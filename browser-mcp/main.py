@@ -334,8 +334,8 @@ async def read_xhs_note(url: str, comment_count: int = 10) -> str:
 @mcp.tool()
 async def like_xhs_note() -> str:
     """
-    给当前打开的小红书笔记点赞或取消点赞。
-    需要先用 read_xhs_note 打开一篇笔记。
+    给当前打开的小红书笔记点个赞（再点一次取消）。
+    要先用 read_xhs_note 打开一篇笔记。
     """
     async with get_lock():
         try:
