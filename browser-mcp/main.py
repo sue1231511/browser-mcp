@@ -107,7 +107,7 @@ async def ensure_page() -> Page:
  
 @mcp.tool()
 async def navigate(url: str) -> str:
-    """打开指定 URL，等待页面基本加载完成"""
+    """打开一个网页"""
     async with get_lock():
         try:
             page = await ensure_page()
