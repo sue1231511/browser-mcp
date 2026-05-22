@@ -190,9 +190,7 @@ async def type_text(selector: str, text: str, human_like: bool = False) -> str:
 @mcp.tool()
 async def scroll(direction: str = "down", amount: int = 600) -> str:
     """
-    滚动当前页面。
-    direction: up 或 down
-    amount: 像素数，默认 600
+    往上或往下滚页面。direction: up或down，amount: 滚多少像素，默认600。
     """
     async with get_lock():
         try:
