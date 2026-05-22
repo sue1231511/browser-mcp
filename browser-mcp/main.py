@@ -312,9 +312,8 @@ async def read_xhs_feed(count: int = 10) -> str:
 @mcp.tool()
 async def read_xhs_note(url: str, comment_count: int = 10) -> str:
     """
-    读取一篇小红书笔记的完整内容（标题、正文、作者、标签、评论等）。
-    url: 笔记的完整链接（建议用 read_xhs_feed 返回的带 xsec_token 的链接）。
-    comment_count: 读取评论条数，默认 10。
+    打开一篇小红书笔记看完整内容：标题、正文、作者、标签、评论都在。
+    url: 笔记链接（最好用刷首页时返回的带token的链接）。comment_count: 读几条评论，默认10。
     """
     async with get_lock():
         try:
